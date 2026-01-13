@@ -1,0 +1,7 @@
+{
+  "name": "One",
+  "description": "A voice-first AI companion. Simple, bright, and intelligent.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
