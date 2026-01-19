@@ -6,16 +6,39 @@ import { JournalView } from './components/JournalView';
 import { MoreHorizontal } from 'lucide-react';
 import { GoogleGenAI } from '@google/genai';
 
-// Initialize with empty tasks
-const INITIAL_TASKS: Task[] = [];
+// localStorage keys
+const STORAGE_KEYS = {
+  TASKS: 'one_tasks',
+  JOURNAL: 'one_journal'
+};
+
+// Load from localStorage
+const loadFromStorage = <T,>(key: string, fallback: T): T => {
+  try {
+    const stored = localStorage.getItem(key);
+    return stored ? JSON.parse(stored) : fallback;
+  } catch {
+    return fallback;
+  }
+};
 
 export default function App() {
-  const [tasks, setTasks] = useState<Task[]>(INITIAL_TASKS);
-  const [journalEntries, setJournalEntries] = useState<JournalEntry[]>([]);
+  const [tasks, setTasks] = useState<Task[]>(() => loadFromStorage(STORAGE_KEYS.TASKS, []));
+  const [journalEntries, setJournalEntries] = useState<JournalEntry[]>(() => loadFromStorage(STORAGE_KEYS.JOURNAL, []));
   const [isVoiceOpen, setIsVoiceOpen] = useState(false);
   const [view, setView] = useState<'board' | 'journal'>('board');
 
-  // Automatic Journal Generation at start of day
+  // Persist tasks to localStorage
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEYS.TASKS, JSON.stringify(tasks));
+  }, [tasks]);
+
+  // Persist journal to localStorage
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEYS.JOURNAL, JSON.stringify(journalEntries));
+  }, [journalEntries]);
+
+  // Automatic Journal Generation at start of day (3rd person narrative)
   useEffect(() => {
     const generateMorningJournal = async () => {
         const today = new Date().toLocaleDateString();
@@ -24,26 +47,34 @@ export default function App() {
 
         try {
             const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+            const taskSummary = tasks.length > 0
+              ? `They have ${tasks.filter(t => t.status === 'pending').length} pending tasks and ${tasks.filter(t => t.status === 'completed').length} completed tasks.`
+              : 'Their canvas is currently empty.';
+
             const prompt = `
-                You are "One", a minimalist and intelligent AI companion.
-                It is the start of a new day (${today}).
-                The user has just opened the application. The canvas is currently blank.
-                Write a very short, poetic, and inspiring journal entry (under 50 words) welcoming the user to a fresh new day.
-                Focus on the potential of the blank slate. Do not be cheesy. Be "simple but advanced".
-                Do not use headers. Just the text.
+                You are "One", a super sweet and caring AI companion writing a journal entry about the user.
+                Write in 3RD PERSON NARRATIVE about the user (use "they/them/their").
+                Date: ${today}
+                Context: ${taskSummary}
+
+                Write a short, warm, authentic reflection (under 60 words) about the user's day.
+                Be genuinely caring and sweet, like a supportive best friend observing them.
+                USE TEXT EMOTICONS like :) :D <3 ^_^ :') but NEVER use emojis.
+                Example tone: "They showed up today, and that's already something beautiful :) The little things they do matter more than they know <3"
+                Do not use headers. Just the narrative text.
             `;
             const response = await ai.models.generateContent({
-                model: 'gemini-3-flash-preview',
+                model: 'gemini-2.0-flash',
                 contents: prompt
             });
-            const text = response.text || "A new day begins. The canvas is yours.";
+            const text = response.text || "They began another day. The canvas awaited their touch.";
             setJournalEntries(prev => [{ id: Date.now().toString(), date: today, content: text }, ...prev]);
         } catch (e) {
             console.error("Auto Journal Error", e);
         }
     };
     generateMorningJournal();
-  }, []); 
+  }, []);
 
   const addTask = (partialTask: Partial<Task>) => {
     const newTask: Task = {
@@ -74,36 +105,21 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-white text-slate-900 font-sans selection:bg-red-100 selection:text-red-900">
-      
+
       {/* Header */}
       <header className="fixed top-0 left-0 right-0 z-30 bg-white/90 backdrop-blur-md px-8 py-6 flex justify-between items-center transition-all duration-300">
         <div className="flex items-center cursor-pointer group" onClick={() => setView('board')}>
-            {/* Custom SVG Logo */}
-            <svg className="h-8 w-auto group-hover:scale-105 transition-transform" viewBox="0 0 130 44" fill="none" xmlns="http://www.w3.org/2000/svg">
-                {/* O - Face */}
-                <circle cx="22" cy="22" r="20" fill="#DC2626"/>
-                {/* Eyes */}
-                <circle cx="15" cy="18" r="2.5" fill="white"/>
-                <circle cx="29" cy="18" r="2.5" fill="white"/>
-                {/* Mouth */}
-                <ellipse cx="22" cy="28" rx="6" ry="3.5" fill="white"/>
-
-                {/* n */}
-                <path d="M52 42V14.5C52 10 54 6 61 6C68 6 70 10 70 14.5V42H82V13.5C82 4 75 0 65 0C58 0 54 2 50 7V2H40V42H52Z" fill="#DC2626"/>
-
-                {/* e */}
-                <path d="M124 23H96C96 36 102 38 108 38C114 38 116 36 117 33H128C127 41 119 46 108 46C94 46 84 36 84 23C84 10 94 0 108 0C121 0 130 10 130 23ZM96 17H118C118 10 114 8 108 8C101 8 97 10 96 17Z" fill="#DC2626"/>
-            </svg>
+            <img src="/logo.png" alt="One" className="h-8 w-auto group-hover:scale-105 transition-transform" />
         </div>
 
         <div className="flex items-center gap-6">
-            <button 
+            <button
                 onClick={() => setView('board')}
                 className={`text-xs font-bold tracking-widest uppercase transition-colors ${view === 'board' ? 'text-red-600' : 'text-slate-400 hover:text-red-500'}`}
             >
                 Canvas
             </button>
-            <button 
+            <button
                 onClick={() => setView('journal')}
                 className={`text-xs font-bold tracking-widest uppercase transition-colors ${view === 'journal' ? 'text-red-600' : 'text-slate-400 hover:text-red-500'}`}
             >
@@ -136,9 +152,9 @@ export default function App() {
       )}
 
       {/* Voice Interface Overlay (Floating Pill) */}
-      <VoiceInterface 
-        isOpen={isVoiceOpen} 
-        onClose={() => setIsVoiceOpen(false)} 
+      <VoiceInterface
+        isOpen={isVoiceOpen}
+        onClose={() => setIsVoiceOpen(false)}
         tasks={tasks}
         addTask={addTask}
         completeTask={completeTask}

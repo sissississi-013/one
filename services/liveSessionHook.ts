@@ -13,6 +13,8 @@ interface UseLiveSessionProps {
 export const useLiveSession = ({ onAddTask, onCompleteTask, onUpdateTask, existingTasks }: UseLiveSessionProps) => {
   const [isConnected, setIsConnected] = useState(false);
   const [isTalking, setIsTalking] = useState(false); // Model is talking
+  const [isUserTalking, setIsUserTalking] = useState(false); // User is talking
+  const [userAudioLevel, setUserAudioLevel] = useState(0); // Audio level 0-1
   const [error, setError] = useState<string | null>(null);
   
   // Refs for audio handling to avoid re-renders
@@ -54,6 +56,8 @@ export const useLiveSession = ({ onAddTask, onCompleteTask, onUpdateTask, existi
 
     setIsConnected(false);
     setIsTalking(false);
+    setIsUserTalking(false);
+    setUserAudioLevel(0);
   }, []);
 
   const connect = useCallback(async () => {
@@ -116,13 +120,18 @@ export const useLiveSession = ({ onAddTask, onCompleteTask, onUpdateTask, existi
             voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Zephyr' } },
           },
           tools: [{ functionDeclarations: tools }],
-          systemInstruction: `You are a warm, capable, and emotionally intelligent personal companion named "Aura". 
-          Your goal is to help the user plan their day through natural conversation.
-          Start by asking "Good morning! What's on your mind today?" or similar.
-          If the user mentions meetings or tasks, offer to add them.
-          If the user seems stressed, be supportive.
-          You can reference their existing tasks if asked.
-          Do NOT list all tasks unless asked. Keep it conversational.`,
+          systemInstruction: `You are "One", a warm and efficient personal companion.
+          Your goal is to help the user manage their day through natural conversation.
+
+          IMPORTANT BEHAVIOR:
+          - When the user mentions ANY task, meeting, or to-do item, IMMEDIATELY add it using the addTask function. Do NOT ask for confirmation.
+          - Just add tasks as they mention them and briefly acknowledge like "Got it" or "Added".
+          - Be concise and helpful. Don't repeat back the full details.
+          - If they mention a time, include it. If they mention it's work/personal/meeting, categorize it.
+          - If the user seems stressed, be briefly supportive but still efficient.
+          - Only list tasks if explicitly asked.
+
+          Keep responses SHORT. No long confirmations. Just help them and move on.`,
         },
         callbacks: {
           onopen: async () => {
@@ -147,7 +156,17 @@ export const useLiveSession = ({ onAddTask, onCompleteTask, onUpdateTask, existi
                 processor.onaudioprocess = (e) => {
                     const inputData = e.inputBuffer.getChannelData(0);
                     const blob = createAudioBlob(inputData);
-                    
+
+                    // Calculate audio level for visualization
+                    let sum = 0;
+                    for (let i = 0; i < inputData.length; i++) {
+                        sum += inputData[i] * inputData[i];
+                    }
+                    const rms = Math.sqrt(sum / inputData.length);
+                    const level = Math.min(1, rms * 10); // Amplify and clamp
+                    setUserAudioLevel(level);
+                    setIsUserTalking(level > 0.05);
+
                     sessionPromise.then(session => {
                         session.sendRealtimeInput({ media: blob });
                     });
@@ -246,5 +265,5 @@ export const useLiveSession = ({ onAddTask, onCompleteTask, onUpdateTask, existi
     }
   }, [onAddTask, onCompleteTask, existingTasks]);
 
-  return { connect, disconnect, isConnected, isTalking, error };
+  return { connect, disconnect, isConnected, isTalking, isUserTalking, userAudioLevel, error };
 };
